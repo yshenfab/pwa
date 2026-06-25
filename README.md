@@ -20,6 +20,15 @@ npm run build
 
 产物在 `dist/` 目录，`npm run preview` 可以本地预览构建结果。
 
+## 质量检查
+
+```bash
+npm run lint
+npm run test
+```
+
+`npm run test` 会覆盖日期计算和 GRE 复习调度等核心纯逻辑。
+
 ## 部署到 Vercel（推荐，免费）
 
 1. 把这个项目推到一个 GitHub 仓库
@@ -76,12 +85,14 @@ vercel
     ├── main.jsx             # React 入口
     ├── App.jsx              # 主应用逻辑（任务清单 + 英语学习）
     ├── app.css              # 样式
+    ├── dateUtils.js          # 日期格式化与日期偏移
+    ├── learningLogic.js      # GRE 复习调度与进度计算
     └── storage.js           # 本地存储封装层
 ```
 
 ## 后续可以扩展的方向
 
-- 英语学习内容库（`App.jsx` 里的 `VOCAB_BANK` / `PASSAGE_BANK`）目前是写死的几条，
+- 英语学习内容库（`src/vocabBank.js` / `src/passageBank.js`）目前是本地静态内容，
   循环复用；可以扩充数量，或改成调用 AI API 每天动态生成新内容
 - 任务清单可以加"每周/每月完成率"统计页面
 - 想要多设备同步的话按上面"数据存储说明"里的思路替换存储层

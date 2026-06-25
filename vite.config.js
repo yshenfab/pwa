@@ -28,9 +28,6 @@ export default defineConfig({
         // 离线缓存策略：优先用缓存，资源更新后自动替换
         globPatterns: ["**/*.{js,css,html,png,svg,ico}"],
       },
-      devOptions: {
-        enabled: true,
-      },
     }),
   ],
   server: {
