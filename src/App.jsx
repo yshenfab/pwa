@@ -2,24 +2,24 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Plus, Briefcase, User, BookOpen, ChevronLeft, ChevronRight, Sparkles, Calendar, Trash2, GripVertical, Bell, Volume2, X, RotateCcw, BookMarked } from "lucide-react";
+import { Plus, Briefcase, User, BookOpen, ChevronLeft, ChevronRight, Sparkles, Calendar, Trash2, GripVertical, Bell, X } from "lucide-react";
 import { storageGet, storageSet } from "./storage.js";
-import { addDays, dayIndex, formatDisplay, todayKey } from "./dateUtils.js";
-import { applyVocabDecisionsToProgress, countMastered, getDailyWords, getNextReviewDate } from "./learningLogic.js";
-import { GRE_VOCAB } from "./vocabBank.js";
-import { PASSAGE_BANK } from "./passageBank.js";
+import { addDays, formatDisplay, todayKey } from "./dateUtils.js";
+import { getStudyQueue, getMasteredCount, getLearnedCount } from "./learningLogic.js";
+import { VOCAB } from "./vocabBank.js";
+import StudyMode from "./StudyMode.jsx";
 import "./app.css";
 
 // ── 常用任务预设 ──
 const DEFAULT_PRESETS = ["跑步 5km", "普拉提", "看书 30 分钟", "冥想 10 分钟", "健身", "散步", "写日记", "整理房间", "早睡 11 点前", "喝够 8 杯水", "拉伸放松", "瑜伽"];
 
 // ── 存储 ──
-function emptyDay() { return { work: [], personal: [], englishDone: { vocab: false, passage: false }, carriedChecked: false }; }
+function emptyDay() { return { work: [], personal: [], englishDone: { vocab: false }, carriedChecked: false }; }
 function normalizeDay(day) {
   return {
     ...emptyDay(),
     ...day,
-    englishDone: { vocab: false, passage: false, ...(day?.englishDone || {}) },
+    englishDone: { vocab: false, ...(day?.englishDone || {}) },
   };
 }
 async function loadDay(key) { const res = await storageGet(`day:${key}`); return res ? res.value : null; }
@@ -121,220 +121,47 @@ function PresetsPanel({ presets, onAddTask, onUpdate }) {
   );
 }
 
-// ── GRE 进度条 ──
-function GREProgress({ progress, customVocab }) {
-  const tier1 = GRE_VOCAB.filter(w => w.tier === 1);
-  const tier2 = GRE_VOCAB.filter(w => w.tier === 2);
-  const t1Done = tier1.filter(w => (progress[String(w.id)]?.reviewCount ?? 0) >= 3).length;
-  const t2Done = tier2.filter(w => (progress[String(w.id)]?.reviewCount ?? 0) >= 3).length;
-  const cvDone = customVocab.filter(w => (progress[w.id]?.reviewCount ?? 0) >= 3).length;
-  const total = tier1.length + tier2.length;
-  const done = t1Done + t2Done;
-  const pct = total ? Math.round((done / total) * 100) : 0;
-  return (
-    <div className="gre-progress">
-      <div className="gre-bar"><div className="gre-bar-fill" style={{ width: `${pct}%` }} /></div>
-      <div className="gre-stats">
-        <span>T1 {t1Done}/{tier1.length}</span>
-        <span>T2 {t2Done}/{tier2.length}</span>
-        {customVocab.length > 0 && <span>生词本 {cvDone}/{customVocab.length}</span>}
-        <span className="gre-pct-label">{done}/{total} 已掌握 · {pct}%</span>
-      </div>
-    </div>
-  );
-}
-
-// ── 翻转卡片 ──
-function VocabFlipCard({ word, flipped, onClick }) {
-  const speak = () => {
-    if (!window.speechSynthesis) return;
-    const utt = new SpeechSynthesisUtterance(word.word);
-    utt.lang = "en-US"; utt.rate = 0.88;
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(utt);
-  };
-  return (
-    <div className={`vocab-flip-card ${flipped ? "flipped" : ""}`} onClick={!flipped ? onClick : undefined}>
-      <div className="vocab-flip-inner">
-        <div className="vocab-flip-front">
-          <div className="vf-badges">
-            <span className={`vf-badge ${word.isNew ? "badge-new" : "badge-review"}`}>{word.isNew ? "新词" : "复习"}</span>
-            {word.isCustom ? <span className="vf-tier tier-custom">生词本</span> : <span className="vf-tier">Tier {word.tier}</span>}
-          </div>
-          <div className="vf-word">{word.word}</div>
-          {word.phon && <div className="vf-phon">{word.phon}</div>}
-          <button type="button" className="vf-speak" aria-label={`朗读 ${word.word}`} onClick={e => { e.stopPropagation(); speak(); }}><Volume2 size={14} /></button>
-          <div className="vf-tap-hint">点击翻面查看释义</div>
-        </div>
-        <div className="vocab-flip-back">
-          <div className="vb-word">{word.word}</div>
-          <div className="vb-cn">{word.cn}</div>
-          {word.root && <div className="vb-root"><span className="vb-root-label">词根</span>{word.root}</div>}
-          <div className="vb-ex">"{word.ex}"</div>
-          <button type="button" className="vb-speak" onClick={e => { e.stopPropagation(); speak(); }}><Volume2 size={13} /> 朗读</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── 单词卡片组 ──
-function VocabDeck({ dateKey, done, customVocab, onProgressChange, onDone, onStorageError }) {
+// ── 每日单词卡片（任务页摘要 + 打开全屏背单词）──
+function VocabCard({ onAfterStudy }) {
+  const [open, setOpen] = useState(false);
   const [progress, setProgress] = useState(null);
-  const [words, setWords] = useState([]);
-  const [idx, setIdx] = useState(0);
-  const [flipped, setFlipped] = useState(false);
-  const [decisions, setDecisions] = useState({});
-  const [phase, setPhase] = useState("loading");
+  const load = useCallback(() => {
+    storageGet("vocab_progress").then((res) => setProgress(res ? res.value : {}));
+  }, []);
+  useEffect(() => { load(); }, [load]);
 
-  useEffect(() => {
-    setPhase("loading"); setIdx(0); setFlipped(false); setDecisions({});
-    storageGet("vocab_progress").then(res => {
-      const p = res ? res.value : {};
-      setProgress(p);
-      const w = getDailyWords(p, customVocab, dateKey);
-      setWords(w);
-      setPhase(done || w.length === 0 ? "done" : "deck");
-      if (!done && w.length === 0) onDone?.();
-    });
-  }, [dateKey, done, customVocab, onDone]);
+  const todayK = todayKey();
+  const queue = progress ? getStudyQueue({ vocab: VOCAB, progress, todayK }) : [];
+  const reviews = queue.filter((w) => w.isReview).length;
+  const news = queue.filter((w) => w.isNew).length;
+  const mastered = progress ? getMasteredCount(progress) : 0;
+  const learned = progress ? getLearnedCount(progress) : 0;
+  const todo = reviews + news;
 
-  const decide = async (decision) => {
-    const word = words[idx];
-    const newDecisions = { ...decisions, [String(word.id)]: decision };
-    setDecisions(newDecisions);
-    if (idx + 1 >= words.length) {
-      const updated = applyVocabDecisionsToProgress(newDecisions, progress, dateKey);
-      const saved = await storageSet("vocab_progress", updated);
-      if (!saved) {
-        onStorageError?.("单词进度保存失败，请检查浏览器存储权限。");
-        return;
-      }
-      setProgress(updated);
-      onProgressChange?.(updated);
-      onDone?.();
-      setPhase("done");
-    } else {
-      setIdx(i => i + 1); setFlipped(false);
-    }
-  };
-
-  const newCount = words.filter(w => w.isNew).length;
-  const reviewCount = words.filter(w => w.isReview).length;
-  const masteredToday = Object.values(decisions).filter(d => d === "mastered").length;
-
-  if (phase === "loading") return <div className="vocab-deck-loading">加载单词...</div>;
-
-  if (phase === "done") {
-    const totalMastered = countMastered(progress || {});
-    const doneText = words.length > 0 && masteredToday > 0 ? `${masteredToday} / ${words.length} 词已记住` : "当日单词已完成";
-    return (
-      <div className="vocab-done">
-        <div className="vocab-done-check">✓</div>
-        <div className="vocab-done-title">当日单词完成</div>
-        <div className="vocab-done-sub">{words.length > 0 ? doneText : "当日无新词安排"}</div>
-        <div className="vocab-done-total">累计已掌握 {totalMastered} / {GRE_VOCAB.length + customVocab.length} 词</div>
-      </div>
-    );
-  }
-
-  const word = words[idx];
-  return (
-    <div className="vocab-deck">
-      <div className="vocab-deck-meta">
-        <div className="vocab-deck-tags">
-          <span className="tag-new">{newCount} 新词</span>
-          {reviewCount > 0 && <span className="tag-review">{reviewCount} 复习</span>}
-        </div>
-        <span className="vocab-deck-progress">{idx + 1} / {words.length}</span>
-      </div>
-      <VocabFlipCard word={word} flipped={flipped} onClick={() => setFlipped(true)} />
-      <div className="vocab-dots">
-        {words.map((w, i) => <div key={i} className={`vocab-dot ${i < idx ? "dot-done" : ""} ${i === idx ? "dot-current" : ""} ${w.isReview ? "dot-review" : ""}`} />)}
-      </div>
-      {flipped ? (
-        <div className="vocab-actions">
-          <button type="button" className="vocab-btn-retry" onClick={() => decide("retry")}><RotateCcw size={14} /> 再背一次</button>
-          <button type="button" className="vocab-btn-mastered" onClick={() => decide("mastered")}>记住了 ✓</button>
-        </div>
-      ) : <div className="vocab-actions-placeholder" />}
-    </div>
-  );
-}
-
-// ── 原创精读短文 ──
-function PassageBlock({ passage, done, onToggle, savedWords, onSaveWord }) {
-  const [showGloss, setShowGloss] = useState(false);
-  const [justSaved, setJustSaved] = useState({});
-
-  const speak = () => {
-    if (!window.speechSynthesis) return;
-    const utt = new SpeechSynthesisUtterance(passage.text);
-    utt.lang = "en-US"; utt.rate = 0.88;
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(utt);
-  };
-
-  const handleSave = (en, cn) => {
-    onSaveWord({ word: en, cn, ex: `来自原创精读 · ${passage.title}` });
-    setJustSaved(prev => ({ ...prev, [en]: true }));
-  };
-
-  return (
-    <div className={`passage-block ${done ? "block-done" : ""}`}>
-      <div className="eng-block-label">{passage.title}</div>
-      <div className="passage-text">{passage.text}</div>
-      <div className="passage-actions">
-        <button type="button" className="speak-passage-btn" onClick={speak}><Volume2 size={12} /> 朗读</button>
-        <button type="button" className="gloss-link" onClick={() => setShowGloss(s => !s)}>{showGloss ? "收起注释" : "查看注释"}</button>
-      </div>
-      {showGloss && (
-        <div className="gloss-list">
-          {passage.glossary.map(([en, cn]) => {
-            const alreadySaved = savedWords.has(en) || justSaved[en];
-            return (
-              <div key={en} className="gloss-item">
-                <span><b>{en}</b> — {cn}</span>
-                <button
-                  type="button"
-                  className={`save-word-btn ${alreadySaved ? "saved" : ""}`}
-                  onClick={() => !alreadySaved && handleSave(en, cn)}
-                  title={alreadySaved ? "已加入生词本" : "加入生词本"}
-                >
-                  {alreadySaved ? <BookMarked size={12} /> : <Plus size={12} />}
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      )}
-      <button type="button" className={`mini-toggle ${done ? "on" : ""}`} onClick={onToggle}>
-        {done ? "已读完 ✓" : "标记已读"}
-      </button>
-    </div>
-  );
-}
-
-// 因为 GREProgress 需要 progress，从外部传入
-function EnglishCardWithProgress({ dateKey, passage, done, vocabDone, onTogglePassage, onVocabDone, customVocab, onSaveWord, onStorageError }) {
-  const [progress, setProgress] = useState({});
-  useEffect(() => {
-    storageGet("vocab_progress").then(res => { if (res) setProgress(res.value); });
-  }, [dateKey]);
-  const handleProgressChange = (updated) => setProgress(updated);
-  const savedWords = new Set(customVocab.map(w => w.word));
   return (
     <div className="eng-card">
       <div className="eng-head">
         <BookOpen size={15} />
-        <span>每日英语 · GRE 备考</span>
+        <span>每日单词 · 日常英语</span>
         <Sparkles size={12} className="spark" />
       </div>
-      <GREProgress progress={progress} customVocab={customVocab} />
-      <VocabDeck dateKey={dateKey} done={vocabDone} customVocab={customVocab} onProgressChange={handleProgressChange} onDone={onVocabDone} onStorageError={onStorageError} />
-      <div className="eng-divider" />
-      <div className="eng-passage-head">原创短文精读</div>
-      <PassageBlock passage={passage} done={done} onToggle={onTogglePassage} savedWords={savedWords} onSaveWord={onSaveWord} />
+      <div className="vc-body">
+        <div className="vc-stats">
+          <div className="vc-stat"><b className="c-review">{reviews}</b><span>待复习</span></div>
+          <div className="vc-stat"><b className="c-new">{news}</b><span>新词</span></div>
+          <div className="vc-stat"><b className="c-done">{mastered}</b><span>已掌握</span></div>
+        </div>
+        <button type="button" className="vc-start" onClick={() => setOpen(true)}>
+          {todo ? `开始背单词 (${todo})` : "复习 / 测试 →"}
+        </button>
+        <div className="vc-sub">累计已学 {learned} / {VOCAB.length} 词</div>
+      </div>
+      {open && (
+        <StudyMode
+          onClose={() => { setOpen(false); load(); }}
+          onAfterStudy={() => { onAfterStudy?.(); load(); }}
+        />
+      )}
     </div>
   );
 }
@@ -363,14 +190,12 @@ export default function App() {
   const [data, setData] = useState(emptyDay());
   const [loading, setLoading] = useState(true);
   const [presets, setPresets] = useState(DEFAULT_PRESETS);
-  const [customVocab, setCustomVocab] = useState([]);
   const [showNotifBanner, setShowNotifBanner] = useState(false);
   const [storageError, setStorageError] = useState("");
   const idSeed = useRef(0);
 
   useEffect(() => {
     storageGet("presets").then(res => { if (res) setPresets(res.value); });
-    storageGet("custom_vocab").then(res => { if (res) setCustomVocab(res.value); });
     if ("Notification" in window && Notification.permission === "default" && !localStorage.getItem("notif_dismissed")) setShowNotifBanner(true);
     const t = localStorage.getItem("notif_time");
     if (t && localStorage.getItem("notif_enabled") && Notification.permission === "granted") scheduleNextNotif(t);
@@ -430,31 +255,11 @@ export default function App() {
     });
   }, [persist]);
 
-  const handleSaveWord = async ({ word, cn, ex }) => {
-    if (customVocab.some(w => w.word === word)) return;
-    const id = `cv_${Date.now()}`;
-    const newWord = { id, word, cn, ex, addedDate: dateKey };
-    const newCustomVocab = [...customVocab, newWord];
-    setCustomVocab(newCustomVocab);
-    const savedVocab = await storageSet("custom_vocab", newCustomVocab);
-    if (!savedVocab) {
-      setStorageError("生词本保存失败，请检查浏览器存储权限。");
-      return;
-    }
-    const res = await storageGet("vocab_progress");
-    const progress = res ? res.value : {};
-    const savedProgress = await storageSet("vocab_progress", { ...progress, [id]: { firstSeen: dateKey, reviewCount: 0, nextReview: getNextReviewDate(dateKey, 0) } });
-    if (!savedProgress) setStorageError("生词进度保存失败，请检查浏览器存储权限。");
-    else setStorageError("");
-  };
-
-  const pIdx = dayIndex(dateKey, PASSAGE_BANK.length);
   const totalTasks = data.work.length + data.personal.length;
   const doneTasks = data.work.filter(t => t.done).length + data.personal.filter(t => t.done).length;
-  const passageDone = data.englishDone?.passage ? 1 : 0;
   const vocabDone = data.englishDone?.vocab ? 1 : 0;
-  const totalUnits = totalTasks + 2;
-  const doneUnits = doneTasks + passageDone + vocabDone;
+  const totalUnits = totalTasks + 1;
+  const doneUnits = doneTasks + vocabDone;
   const pct = totalUnits ? Math.round((doneUnits / totalUnits) * 100) : 0;
   const isToday = dateKey === todayKey();
 
@@ -484,17 +289,7 @@ export default function App() {
             <TaskColumn icon={<User size={14} />} label="个人安排" accent="#D97757" tasks={data.personal} onAdd={t => addTask("personal", t)} onToggle={id => toggleTask("personal", id)} onDelete={id => deleteTask("personal", id)} onReorder={l => reorderTasks("personal", l)} />
           </div>
           <PresetsPanel presets={presets} onAddTask={t => addTask("personal", t)} onUpdate={updatePresets} />
-          <EnglishCardWithProgress
-            dateKey={dateKey}
-            passage={PASSAGE_BANK[pIdx]}
-            done={data.englishDone?.passage}
-            vocabDone={data.englishDone?.vocab}
-            onTogglePassage={() => persist(prev => ({ ...prev, englishDone: { ...prev.englishDone, passage: !prev.englishDone?.passage } }))}
-            onVocabDone={markVocabDone}
-            customVocab={customVocab}
-            onSaveWord={handleSaveWord}
-            onStorageError={setStorageError}
-          />
+          <VocabCard onAfterStudy={markVocabDone} />
         </>
       )}
     </div>
