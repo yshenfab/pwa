@@ -36,18 +36,25 @@ export default function StudyMode({ onClose, onAfterStudy }) {
   const [flipped, setFlipped] = useState(false);
   const [phase, setPhase] = useState("idle"); // idle | deck | done
   const [sessionTheme, setSessionTheme] = useState(null);
-  const [masteredThisSession, setMasteredThisSession] = useState(0);
 
   // 测试会话
   const [test, setTest] = useState({ phase: "intro" }); // intro | quiz | result
 
+  // 当日学习记录（供日历/主页查看）：{ studied:[{id,word,cn}], test:{correct,total,pct,at} }
+  const [dayRec, setDayRec] = useState({ studied: [], test: null });
+
   useEffect(() => {
     let alive = true;
-    Promise.all([storageGet("vocab_progress"), storageGet("vocab_today_backup")]).then(([p, b]) => {
+    Promise.all([
+      storageGet("vocab_progress"),
+      storageGet("vocab_today_backup"),
+      storageGet(`vocab_day:${todayK}`),
+    ]).then(([p, b, d]) => {
       if (!alive) return;
       setProgress(p ? p.value : {});
       const bk = b && b.value && b.value.date === todayK ? b.value : { date: todayK, words: {} };
       setBackup(bk);
+      setDayRec(d && d.value ? d.value : { studied: [], test: null });
     });
     return () => { alive = false; };
   }, [todayK]);
@@ -59,6 +66,10 @@ export default function StudyMode({ onClose, onAfterStudy }) {
   const saveBackup = async (next) => {
     setBackup(next);
     await storageSet("vocab_today_backup", next);
+  };
+  const saveDayRec = async (next) => {
+    setDayRec(next);
+    await storageSet(`vocab_day:${todayK}`, next);
   };
 
   const stats = useMemo(
@@ -95,6 +106,10 @@ export default function StudyMode({ onClose, onAfterStudy }) {
     const nextProgress = { ...progress, [w.id]: applyGrade(progress[w.id], g, todayK) };
     await saveProgress(nextProgress);
     await saveBackup(nextBackup);
+    // 记录当日已背单词（按 id 去重）
+    if (!dayRec.studied.some((s) => s.id === w.id)) {
+      await saveDayRec({ ...dayRec, studied: [...dayRec.studied, { id: w.id, word: w.word, cn: w.cn }] });
+    }
     if (g >= 2) setMasteredThisSession((n) => n + 1);
     speak(w.word);
 
@@ -121,6 +136,7 @@ export default function StudyMode({ onClose, onAfterStudy }) {
     }
     await saveProgress(next);
     await saveBackup({ date: todayK, words: {} });
+    await saveDayRec({ studied: [], test: dayRec.test }); // 清空当日已背记录，保留测试成绩
     setPhase("idle");
     setQueue([]);
   };
@@ -147,7 +163,12 @@ export default function StudyMode({ onClose, onAfterStudy }) {
   };
   const nextTest = () => {
     setTest((t) => {
-      if (t.qi + 1 >= t.qs.length) return { ...t, phase: "result" };
+      if (t.qi + 1 >= t.qs.length) {
+        const total = t.qs.length;
+        const pct = Math.round((t.correct / total) * 100);
+        saveDayRec({ ...dayRec, test: { correct: t.correct, total, pct, at: Date.now() } });
+        return { ...t, phase: "result" };
+      }
       return { ...t, qi: t.qi + 1, answered: false, chosen: null };
     });
   };

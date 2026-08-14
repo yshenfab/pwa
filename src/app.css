@@ -248,6 +248,38 @@ body { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inse
 .vc-start:hover { background: #c9684a; }
 .vc-sub { font-size: 11.5px; color: rgba(255,255,255,0.5); text-align: center; }
 .c-review { color: #e6b34d; } .c-new { color: #7ab8e8; } .c-done { color: #5cc98f; }
+/* 今日测试成绩 / 当日学习记录 */
+.vc-test-line { display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; color: rgba(255,255,255,0.6); background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 9px; padding: 9px 12px; }
+.vc-test-line.on { border-color: rgba(92,201,143,0.4); background: rgba(92,201,143,0.1); }
+.vc-test-line b { color: #5cc98f; font-weight: 700; }
+.vc-test-line em { color: rgba(255,255,255,0.4); font-style: normal; }
+.vc-hist-head { font-size: 12px; color: rgba(255,255,255,0.55); font-weight: 600; }
+.vc-hist-words { display: flex; flex-wrap: wrap; gap: 6px; }
+.vc-chip { background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 5px 9px; font-size: 12.5px; color: #FAF8F4; }
+.vc-chip i { color: rgba(255,255,255,0.5); font-style: normal; margin-left: 5px; font-size: 11px; }
+.vc-hist-empty { font-size: 12.5px; color: rgba(255,255,255,0.4); padding: 6px 0; }
+
+/* ══════════ 日历 ══════════ */
+.cal-backdrop { position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; padding: 20px; }
+.cal-modal { width: 100%; max-width: 340px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; padding: 16px; box-shadow: 0 20px 50px rgba(0,0,0,0.3); }
+.cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.cal-head span { font-weight: 700; font-size: 15px; color: var(--text-main); }
+.cal-head button { background: var(--bg-subtle); border: 1px solid var(--border); border-radius: 8px; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-main); }
+.cal-head button:hover { background: var(--border-mid); }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+.cal-dow { margin-bottom: 4px; }
+.cal-dowcell { text-align: center; font-size: 11px; color: var(--text-muted); padding: 4px 0; }
+.cal-cell { position: relative; aspect-ratio: 1 / 1; border: none; background: none; border-radius: 8px; font-size: 13px; color: var(--text-main); cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; }
+.cal-cell.empty { cursor: default; }
+.cal-cell:not(.empty):hover { background: var(--bg-subtle); }
+.cal-cell.today { color: #D97757; font-weight: 700; }
+.cal-cell.selected { background: #D97757; color: #fff; font-weight: 700; }
+.cal-dot { position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%); width: 4px; height: 4px; border-radius: 50%; background: #5cc98f; }
+.cal-cell.selected .cal-dot { background: #fff; }
+.cal-foot { display: flex; gap: 8px; margin-top: 14px; }
+.cal-foot button { flex: 1; border-radius: 9px; padding: 9px; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid var(--border); }
+.cal-today-btn { background: #D97757; color: #fff; border-color: #D97757 !important; }
+.cal-close-btn { background: var(--bg-subtle); color: var(--text-main); }
 
 /* ══════════ 全屏背单词 ══════════ */
 .sm-overlay {

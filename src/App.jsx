@@ -2,9 +2,9 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Plus, Briefcase, User, BookOpen, ChevronLeft, ChevronRight, Sparkles, Calendar, Trash2, GripVertical, Bell, X } from "lucide-react";
-import { storageGet, storageSet } from "./storage.js";
-import { addDays, formatDisplay, todayKey } from "./dateUtils.js";
+import { Plus, Briefcase, User, BookOpen, ChevronLeft, ChevronRight, Sparkles, Calendar, CalendarDays, Trash2, GripVertical, Bell, X } from "lucide-react";
+import { storageGet, storageSet, storageList } from "./storage.js";
+import { addDays, formatDisplay, todayKey, pad } from "./dateUtils.js";
 import { getStudyQueue, getMasteredCount, getLearnedCount } from "./learningLogic.js";
 import { VOCAB } from "./vocabBank.js";
 import StudyMode from "./StudyMode.jsx";
@@ -12,6 +12,8 @@ import "./app.css";
 
 // ── 常用任务预设 ──
 const DEFAULT_PRESETS = ["跑步 5km", "普拉提", "看书 30 分钟", "冥想 10 分钟", "健身", "散步", "写日记", "整理房间", "早睡 11 点前", "喝够 8 杯水", "拉伸放松", "瑜伽"];
+// ── 每天默认的个人安排（新的一天自动带上；删除后当天不再出现）──
+const DEFAULT_PERSONAL = ["看书 30 分钟", "喝够 8 杯水", "拉伸放松", "背单词", "早睡 11 点前"];
 
 // ── 存储 ──
 function emptyDay() { return { work: [], personal: [], englishDone: { vocab: false }, carriedChecked: false }; }
@@ -121,13 +123,15 @@ function PresetsPanel({ presets, onAddTask, onUpdate }) {
   );
 }
 
-// ── 每日单词卡片（任务页摘要 + 打开全屏背单词）──
-function VocabCard({ onAfterStudy }) {
+// ── 每日单词卡片（今日：摘要 + 打开全屏背单词 + 测试成绩；往日：当日学习记录）──
+function VocabCard({ dateKey, isToday, onAfterStudy }) {
   const [open, setOpen] = useState(false);
   const [progress, setProgress] = useState(null);
+  const [dayRec, setDayRec] = useState(null);
   const load = useCallback(() => {
     storageGet("vocab_progress").then((res) => setProgress(res ? res.value : {}));
-  }, []);
+    storageGet(`vocab_day:${dateKey}`).then((res) => setDayRec(res ? res.value : { studied: [], test: null }));
+  }, [dateKey]);
   useEffect(() => { load(); }, [load]);
 
   const todayK = todayKey();
@@ -137,6 +141,8 @@ function VocabCard({ onAfterStudy }) {
   const mastered = progress ? getMasteredCount(progress) : 0;
   const learned = progress ? getLearnedCount(progress) : 0;
   const todo = reviews + news;
+  const testRec = dayRec?.test;
+  const studied = dayRec?.studied || [];
 
   return (
     <div className="eng-card">
@@ -145,17 +151,38 @@ function VocabCard({ onAfterStudy }) {
         <span>每日单词 · 日常英语</span>
         <Sparkles size={12} className="spark" />
       </div>
-      <div className="vc-body">
-        <div className="vc-stats">
-          <div className="vc-stat"><b className="c-review">{reviews}</b><span>待复习</span></div>
-          <div className="vc-stat"><b className="c-new">{news}</b><span>新词</span></div>
-          <div className="vc-stat"><b className="c-done">{mastered}</b><span>已掌握</span></div>
+
+      {isToday ? (
+        <div className="vc-body">
+          <div className="vc-stats">
+            <div className="vc-stat"><b className="c-review">{reviews}</b><span>待复习</span></div>
+            <div className="vc-stat"><b className="c-new">{news}</b><span>新词</span></div>
+            <div className="vc-stat"><b className="c-done">{mastered}</b><span>已掌握</span></div>
+          </div>
+          <button type="button" className="vc-start" onClick={() => setOpen(true)}>
+            {todo ? `开始背单词 (${todo})` : "复习 / 测试 →"}
+          </button>
+          <div className={`vc-test-line ${testRec ? "on" : ""}`}>
+            <span>📝 今日测试</span>
+            {testRec ? <b>已完成 · {testRec.correct}/{testRec.total} · {testRec.pct}%</b> : <em>未测试</em>}
+          </div>
+          <div className="vc-sub">累计已学 {learned} / {VOCAB.length} 词</div>
         </div>
-        <button type="button" className="vc-start" onClick={() => setOpen(true)}>
-          {todo ? `开始背单词 (${todo})` : "复习 / 测试 →"}
-        </button>
-        <div className="vc-sub">累计已学 {learned} / {VOCAB.length} 词</div>
-      </div>
+      ) : (
+        <div className="vc-body">
+          <div className="vc-hist-head">当日学习记录{studied.length ? `（${studied.length} 词）` : ""}</div>
+          {studied.length ? (
+            <div className="vc-hist-words">
+              {studied.map((w) => <span key={w.id} className="vc-chip">{w.word}<i>{w.cn}</i></span>)}
+            </div>
+          ) : <div className="vc-hist-empty">那天没有背单词</div>}
+          <div className={`vc-test-line ${testRec ? "on" : ""}`}>
+            <span>📝 单词测试</span>
+            {testRec ? <b>{testRec.correct}/{testRec.total} · {testRec.pct}%</b> : <em>未测试</em>}
+          </div>
+        </div>
+      )}
+
       {open && (
         <StudyMode
           onClose={() => { setOpen(false); load(); }}
@@ -184,6 +211,64 @@ function NotifBanner({ onDismiss }) {
   );
 }
 
+// ── 日历（选日期查看当天记录）──
+function CalendarModal({ selected, onPick, onClose }) {
+  const [ym, setYm] = useState(() => { const [y, m] = selected.split("-").map(Number); return { y, m }; });
+  const [active, setActive] = useState(new Set());
+  useEffect(() => {
+    Promise.all([storageList("day:"), storageList("vocab_day:")]).then(([a, b]) => {
+      const s = new Set();
+      (a?.keys || []).forEach((k) => s.add(String(k).slice(4)));
+      (b?.keys || []).forEach((k) => s.add(String(k).slice(10)));
+      setActive(s);
+    });
+  }, []);
+
+  const daysInMonth = new Date(ym.y, ym.m, 0).getDate();
+  const startDow = new Date(ym.y, ym.m - 1, 1).getDay();
+  const cells = [];
+  for (let i = 0; i < startDow; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  const todayK = todayKey();
+  const keyFor = (d) => `${ym.y}-${pad(ym.m)}-${pad(d)}`;
+  const prev = () => setYm(({ y, m }) => (m === 1 ? { y: y - 1, m: 12 } : { y, m: m - 1 }));
+  const next = () => setYm(({ y, m }) => (m === 12 ? { y: y + 1, m: 1 } : { y, m: m + 1 }));
+
+  return (
+    <div className="cal-backdrop" onClick={onClose}>
+      <div className="cal-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="cal-head">
+          <button type="button" aria-label="上个月" onClick={prev}><ChevronLeft size={18} /></button>
+          <span>{ym.y} 年 {ym.m} 月</span>
+          <button type="button" aria-label="下个月" onClick={next}><ChevronRight size={18} /></button>
+        </div>
+        <div className="cal-grid cal-dow">
+          {["日", "一", "二", "三", "四", "五", "六"].map((d) => <span key={d} className="cal-dowcell">{d}</span>)}
+        </div>
+        <div className="cal-grid">
+          {cells.map((d, i) => {
+            if (d === null) return <span key={i} className="cal-cell empty" />;
+            const k = keyFor(d);
+            const cls = ["cal-cell"];
+            if (k === selected) cls.push("selected");
+            else if (k === todayK) cls.push("today");
+            if (active.has(k)) cls.push("has");
+            return (
+              <button type="button" key={i} className={cls.join(" ")} onClick={() => { onPick(k); onClose(); }}>
+                {d}{active.has(k) && <i className="cal-dot" />}
+              </button>
+            );
+          })}
+        </div>
+        <div className="cal-foot">
+          <button type="button" className="cal-today-btn" onClick={() => { onPick(todayK); onClose(); }}>回到今天</button>
+          <button type="button" className="cal-close-btn" onClick={onClose}>关闭</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── 主应用 ──
 export default function App() {
   const [dateKey, setDateKey] = useState(todayKey());
@@ -192,6 +277,7 @@ export default function App() {
   const [presets, setPresets] = useState(DEFAULT_PRESETS);
   const [showNotifBanner, setShowNotifBanner] = useState(false);
   const [storageError, setStorageError] = useState("");
+  const [showCalendar, setShowCalendar] = useState(false);
   const idSeed = useRef(0);
 
   useEffect(() => {
@@ -203,8 +289,12 @@ export default function App() {
 
   const load = useCallback(async (key) => {
     setLoading(true);
-    let d = await loadDay(key);
-    d = normalizeDay(d);
+    const raw = await loadDay(key);
+    const isNewDay = !raw;
+    let d = normalizeDay(raw);
+    if (isNewDay && d.personal.length === 0) {
+      d = { ...d, personal: DEFAULT_PERSONAL.map((text, i) => ({ id: `def-${key}-${i}`, text, done: false })) };
+    }
     if (!d.carriedChecked) {
       const yest = await loadDay(addDays(key, -1));
       if (yest?.work) {
@@ -250,8 +340,10 @@ export default function App() {
 
   const markVocabDone = useCallback(() => {
     persist(prev => {
-      if (prev.englishDone?.vocab) return prev;
-      return { ...prev, englishDone: { ...prev.englishDone, vocab: true } };
+      const personal = prev.personal.map(t => (t.text === "背单词" && !t.done ? { ...t, done: true } : t));
+      const changed = !prev.englishDone?.vocab || personal.some((t, i) => t !== prev.personal[i]);
+      if (!changed) return prev;
+      return { ...prev, englishDone: { ...prev.englishDone, vocab: true }, personal };
     });
   }, [persist]);
 
@@ -273,11 +365,13 @@ export default function App() {
           <h1>{formatDisplay(dateKey)}</h1>
         </div>
         <div className="date-nav">
+          <button type="button" aria-label="打开日历" onClick={() => setShowCalendar(true)}><CalendarDays size={16} /></button>
           <button type="button" aria-label="前一天" onClick={() => setDateKey(addDays(dateKey, -1))}><ChevronLeft size={16} /></button>
           {!isToday && <button type="button" className="today-btn" onClick={() => setDateKey(todayKey())}><Calendar size={12} /> 回到今天</button>}
           <button type="button" aria-label="后一天" onClick={() => setDateKey(addDays(dateKey, 1))}><ChevronRight size={16} /></button>
         </div>
       </header>
+      {showCalendar && <CalendarModal selected={dateKey} onPick={setDateKey} onClose={() => setShowCalendar(false)} />}
       <div className="progress-bar-wrap">
         <div className="progress-bar"><div className="progress-fill" style={{ width: `${pct}%` }} /></div>
         <span className="progress-label">{doneUnits}/{totalUnits} 完成 · {pct}%</span>
@@ -289,7 +383,7 @@ export default function App() {
             <TaskColumn icon={<User size={14} />} label="个人安排" accent="#D97757" tasks={data.personal} onAdd={t => addTask("personal", t)} onToggle={id => toggleTask("personal", id)} onDelete={id => deleteTask("personal", id)} onReorder={l => reorderTasks("personal", l)} />
           </div>
           <PresetsPanel presets={presets} onAddTask={t => addTask("personal", t)} onUpdate={updatePresets} />
-          <VocabCard onAfterStudy={markVocabDone} />
+          <VocabCard dateKey={dateKey} isToday={isToday} onAfterStudy={markVocabDone} />
         </>
       )}
     </div>
