@@ -7,6 +7,21 @@
 
 import { get, set, del, keys } from "idb-keyval";
 
+// 导出全部数据为一个普通对象（用于备份）
+export async function storageExportAll() {
+  const out = {};
+  const all = await keys();
+  for (const k of all) out[String(k)] = await get(k);
+  return out;
+}
+
+// 从备份对象恢复（覆盖同名键）
+export async function storageImportAll(obj) {
+  for (const [k, v] of Object.entries(obj || {})) {
+    await set(k, v);
+  }
+}
+
 export async function storageGet(key) {
   try {
     const value = await get(key);

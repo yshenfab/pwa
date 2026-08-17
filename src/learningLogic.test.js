@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { addDays } from "./dateUtils.js";
 import {
-  applyGrade, getStudyQueue, getThemeStats, getMasteredCount, clozeInfo, buildTest, getTestPool,
+  applyGrade, getStudyQueue, getThemeStats, getMasteredCount, clozeInfo, buildTest, getTestPool, computeStreak,
 } from "./learningLogic.js";
 
 const T = "2026-08-14";
@@ -45,6 +45,32 @@ describe("getStudyQueue", () => {
   it("filters by theme", () => {
     const q = getStudyQueue({ vocab: bank, progress: {}, theme: "B", todayK: T });
     expect(q.every((w) => w.theme === "B")).toBe(true);
+  });
+  it("caps reviews when reviewCap is set", () => {
+    const progress = {
+      0: { reps: 1, interval: 1, ef: 2.5, status: "learning", due: T, lastReviewed: T },
+      1: { reps: 1, interval: 1, ef: 2.5, status: "learning", due: T, lastReviewed: T },
+    };
+    const q = getStudyQueue({ vocab: bank, progress, dailyNew: 0, reviewCap: 1, todayK: T });
+    expect(q.filter((w) => w.isReview).length).toBe(1);
+  });
+});
+
+describe("computeStreak", () => {
+  it("counts consecutive days ending today", () => {
+    const days = new Set([addDays(T, -2), addDays(T, -1), T]);
+    expect(computeStreak(days, T)).toBe(3);
+  });
+  it("still counts when today not yet done but yesterday was", () => {
+    const days = new Set([addDays(T, -2), addDays(T, -1)]);
+    expect(computeStreak(days, T)).toBe(2);
+  });
+  it("breaks on a gap", () => {
+    const days = new Set([addDays(T, -3), T]);
+    expect(computeStreak(days, T)).toBe(1);
+  });
+  it("is 0 with no days", () => {
+    expect(computeStreak(new Set(), T)).toBe(0);
   });
 });
 

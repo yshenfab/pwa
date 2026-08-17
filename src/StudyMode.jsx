@@ -4,7 +4,7 @@ import { storageGet, storageSet } from "./storage.js";
 import { todayKey } from "./dateUtils.js";
 import { VOCAB, THEME_ORDER } from "./vocabBank.js";
 import {
-  DAILY_NEW_DEFAULT, applyGrade, getStudyQueue, getThemeStats,
+  applyGrade, getStudyQueue, getThemeStats,
   getMasteredCount, getLearnedCount, buildTest,
 } from "./learningLogic.js";
 
@@ -24,10 +24,11 @@ const GRADES = [
   { g: 3, label: "简单", sub: "长间隔", cls: "g-easy" },
 ];
 
-export default function StudyMode({ onClose, onAfterStudy }) {
+export default function StudyMode({ onClose, onAfterStudy, settings = { dailyNew: 10, reviewCap: 40 } }) {
   const todayK = todayKey();
   const [progress, setProgress] = useState(null);
   const [backup, setBackup] = useState({ date: todayK, words: {} });
+  const [studyDays, setStudyDays] = useState([]);
   const [tab, setTab] = useState("learn");
 
   // 学习会话
@@ -49,12 +50,14 @@ export default function StudyMode({ onClose, onAfterStudy }) {
       storageGet("vocab_progress"),
       storageGet("vocab_today_backup"),
       storageGet(`vocab_day:${todayK}`),
-    ]).then(([p, b, d]) => {
+      storageGet("study_days"),
+    ]).then(([p, b, d, sd]) => {
       if (!alive) return;
       setProgress(p ? p.value : {});
       const bk = b && b.value && b.value.date === todayK ? b.value : { date: todayK, words: {} };
       setBackup(bk);
       setDayRec(d && d.value ? d.value : { studied: [], test: null });
+      setStudyDays(sd && Array.isArray(sd.value) ? sd.value : []);
     });
     return () => { alive = false; };
   }, [todayK]);
@@ -73,18 +76,18 @@ export default function StudyMode({ onClose, onAfterStudy }) {
   };
 
   const stats = useMemo(
-    () => (progress ? getThemeStats({ vocab: VOCAB, progress, todayK, themeOrder: THEME_ORDER }) : []),
-    [progress, todayK],
+    () => (progress ? getThemeStats({ vocab: VOCAB, progress, todayK, dailyNew: settings.dailyNew, themeOrder: THEME_ORDER }) : []),
+    [progress, todayK, settings.dailyNew],
   );
   const todayQueue = useMemo(
-    () => (progress ? getStudyQueue({ vocab: VOCAB, progress, todayK }) : []),
-    [progress, todayK],
+    () => (progress ? getStudyQueue({ vocab: VOCAB, progress, dailyNew: settings.dailyNew, reviewCap: settings.reviewCap, todayK }) : []),
+    [progress, todayK, settings.dailyNew, settings.reviewCap],
   );
   const hasBackup = backup && backup.date === todayK && Object.keys(backup.words).length > 0;
 
   // ── 学习 ──
   const startStudy = (theme = null) => {
-    const q = getStudyQueue({ vocab: VOCAB, progress, dailyNew: DAILY_NEW_DEFAULT, theme, todayK });
+    const q = getStudyQueue({ vocab: VOCAB, progress, dailyNew: settings.dailyNew, reviewCap: theme ? 0 : settings.reviewCap, theme, todayK });
     if (!q.length) {
       window.alert(theme ? "这个主题今天没有要学的了 🎉" : "今天没有需要学习的单词啦 🎉");
       return;
@@ -93,7 +96,6 @@ export default function StudyMode({ onClose, onAfterStudy }) {
     setIdx(0);
     setFlipped(false);
     setSessionTheme(theme);
-    setMasteredThisSession(0);
     setPhase("deck");
     setTab("learn");
   };
@@ -110,7 +112,12 @@ export default function StudyMode({ onClose, onAfterStudy }) {
     if (!dayRec.studied.some((s) => s.id === w.id)) {
       await saveDayRec({ ...dayRec, studied: [...dayRec.studied, { id: w.id, word: w.word, cn: w.cn }] });
     }
-    if (g >= 2) setMasteredThisSession((n) => n + 1);
+    // 记录打卡日（供连续天数统计）
+    if (!studyDays.includes(todayK)) {
+      const nextDays = [...studyDays, todayK];
+      setStudyDays(nextDays);
+      await storageSet("study_days", nextDays);
+    }
     speak(w.word);
 
     let q = queue;
@@ -137,6 +144,12 @@ export default function StudyMode({ onClose, onAfterStudy }) {
     await saveProgress(next);
     await saveBackup({ date: todayK, words: {} });
     await saveDayRec({ studied: [], test: dayRec.test }); // 清空当日已背记录，保留测试成绩
+    // 今天已无背词记录 → 从打卡日移除
+    if (studyDays.includes(todayK)) {
+      const nextDays = studyDays.filter((d) => d !== todayK);
+      setStudyDays(nextDays);
+      await storageSet("study_days", nextDays);
+    }
     setPhase("idle");
     setQueue([]);
   };

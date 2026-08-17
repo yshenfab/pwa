@@ -2,12 +2,13 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Plus, Briefcase, User, BookOpen, ChevronLeft, ChevronRight, Sparkles, Calendar, CalendarDays, Trash2, GripVertical, Bell, X } from "lucide-react";
+import { Plus, Briefcase, User, BookOpen, ChevronLeft, ChevronRight, Sparkles, Calendar, CalendarDays, Settings as SettingsIcon, Trash2, GripVertical, Bell, X } from "lucide-react";
 import { storageGet, storageSet, storageList } from "./storage.js";
 import { addDays, formatDisplay, todayKey, pad } from "./dateUtils.js";
-import { getStudyQueue, getMasteredCount, getLearnedCount } from "./learningLogic.js";
+import { getStudyQueue, getMasteredCount, getLearnedCount, computeStreak } from "./learningLogic.js";
 import { VOCAB } from "./vocabBank.js";
 import StudyMode from "./StudyMode.jsx";
+import SettingsModal from "./Settings.jsx";
 import "./app.css";
 
 // ── 常用任务预设 ──
@@ -124,18 +125,20 @@ function PresetsPanel({ presets, onAddTask, onUpdate }) {
 }
 
 // ── 每日单词卡片（今日：摘要 + 打开全屏背单词 + 测试成绩；往日：当日学习记录）──
-function VocabCard({ dateKey, isToday, onAfterStudy }) {
+function VocabCard({ dateKey, isToday, settings, onAfterStudy }) {
   const [open, setOpen] = useState(false);
   const [progress, setProgress] = useState(null);
   const [dayRec, setDayRec] = useState(null);
+  const [streak, setStreak] = useState(0);
   const load = useCallback(() => {
     storageGet("vocab_progress").then((res) => setProgress(res ? res.value : {}));
     storageGet(`vocab_day:${dateKey}`).then((res) => setDayRec(res ? res.value : { studied: [], test: null }));
+    storageGet("study_days").then((res) => setStreak(computeStreak(new Set(res?.value || []), todayKey())));
   }, [dateKey]);
   useEffect(() => { load(); }, [load]);
 
   const todayK = todayKey();
-  const queue = progress ? getStudyQueue({ vocab: VOCAB, progress, todayK }) : [];
+  const queue = progress ? getStudyQueue({ vocab: VOCAB, progress, dailyNew: settings.dailyNew, reviewCap: settings.reviewCap, todayK }) : [];
   const reviews = queue.filter((w) => w.isReview).length;
   const news = queue.filter((w) => w.isNew).length;
   const mastered = progress ? getMasteredCount(progress) : 0;
@@ -150,6 +153,7 @@ function VocabCard({ dateKey, isToday, onAfterStudy }) {
         <BookOpen size={15} />
         <span>每日单词 · 日常英语</span>
         <Sparkles size={12} className="spark" />
+        {streak > 0 && <span className="vc-streak">🔥 {streak} 天</span>}
       </div>
 
       {isToday ? (
@@ -185,6 +189,7 @@ function VocabCard({ dateKey, isToday, onAfterStudy }) {
 
       {open && (
         <StudyMode
+          settings={settings}
           onClose={() => { setOpen(false); load(); }}
           onAfterStudy={() => { onAfterStudy?.(); load(); }}
         />
@@ -278,10 +283,13 @@ export default function App() {
   const [showNotifBanner, setShowNotifBanner] = useState(false);
   const [storageError, setStorageError] = useState("");
   const [showCalendar, setShowCalendar] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [settings, setSettings] = useState({ dailyNew: 10, reviewCap: 40 });
   const idSeed = useRef(0);
 
   useEffect(() => {
     storageGet("presets").then(res => { if (res) setPresets(res.value); });
+    storageGet("settings").then(res => { if (res) setSettings(s => ({ ...s, ...res.value })); });
     if ("Notification" in window && Notification.permission === "default" && !localStorage.getItem("notif_dismissed")) setShowNotifBanner(true);
     const t = localStorage.getItem("notif_time");
     if (t && localStorage.getItem("notif_enabled") && Notification.permission === "granted") scheduleNextNotif(t);
@@ -337,6 +345,10 @@ export default function App() {
     if (!saved) setStorageError("常用任务保存失败，请检查浏览器存储权限。");
     else setStorageError("");
   };
+  const updateSettings = (next) => {
+    setSettings(next);
+    storageSet("settings", next);
+  };
 
   const markVocabDone = useCallback(() => {
     persist(prev => {
@@ -369,9 +381,11 @@ export default function App() {
           <button type="button" aria-label="前一天" onClick={() => setDateKey(addDays(dateKey, -1))}><ChevronLeft size={16} /></button>
           {!isToday && <button type="button" className="today-btn" onClick={() => setDateKey(todayKey())}><Calendar size={12} /> 回到今天</button>}
           <button type="button" aria-label="后一天" onClick={() => setDateKey(addDays(dateKey, 1))}><ChevronRight size={16} /></button>
+          <button type="button" aria-label="设置" onClick={() => setShowSettings(true)}><SettingsIcon size={16} /></button>
         </div>
       </header>
       {showCalendar && <CalendarModal selected={dateKey} onPick={setDateKey} onClose={() => setShowCalendar(false)} />}
+      {showSettings && <SettingsModal settings={settings} onChange={updateSettings} onClose={() => setShowSettings(false)} />}
       <div className="progress-bar-wrap">
         <div className="progress-bar"><div className="progress-fill" style={{ width: `${pct}%` }} /></div>
         <span className="progress-label">{doneUnits}/{totalUnits} 完成 · {pct}%</span>
@@ -383,7 +397,7 @@ export default function App() {
             <TaskColumn icon={<User size={14} />} label="个人安排" accent="#D97757" tasks={data.personal} onAdd={t => addTask("personal", t)} onToggle={id => toggleTask("personal", id)} onDelete={id => deleteTask("personal", id)} onReorder={l => reorderTasks("personal", l)} />
           </div>
           <PresetsPanel presets={presets} onAddTask={t => addTask("personal", t)} onUpdate={updatePresets} />
-          <VocabCard dateKey={dateKey} isToday={isToday} onAfterStudy={markVocabDone} />
+          <VocabCard dateKey={dateKey} isToday={isToday} settings={settings} onAfterStudy={markVocabDone} />
         </>
       )}
     </div>

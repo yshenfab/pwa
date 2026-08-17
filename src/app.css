@@ -281,6 +281,26 @@ body { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inse
 .cal-today-btn { background: #D97757; color: #fff; border-color: #D97757 !important; }
 .cal-close-btn { background: var(--bg-subtle); color: var(--text-main); }
 
+/* 连续打卡徽标（单词卡头部，navy 底） */
+.vc-streak { margin-left: auto; font-size: 12px; font-weight: 700; color: #f0b45a; background: rgba(240,180,90,0.14); border: 1px solid rgba(240,180,90,0.3); padding: 2px 9px; border-radius: 20px; }
+
+/* ══════════ 设置 ══════════ */
+.set-modal { width: 100%; max-width: 360px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; padding: 18px; box-shadow: 0 20px 50px rgba(0,0,0,0.3); }
+.set-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.set-head span { font-weight: 700; font-size: 17px; color: var(--text-main); }
+.set-x { background: var(--bg-subtle); border: none; color: var(--text-main); width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.set-x:hover { background: var(--border-mid); }
+.set-section { padding: 14px 0; border-bottom: 1px solid var(--border-lt); }
+.set-section:last-of-type { border-bottom: none; }
+.set-row { display: flex; align-items: center; justify-content: space-between; padding: 7px 0; font-size: 14px; color: var(--text-main); }
+.set-row input { width: 74px; text-align: center; background: var(--bg-subtle); border: 1px solid var(--border); border-radius: 8px; padding: 8px; font-size: 14px; color: var(--text-main); }
+.set-sub { font-size: 13.5px; font-weight: 700; color: var(--text-main); margin-bottom: 4px; }
+.set-hint { font-size: 12px; color: var(--text-muted); line-height: 1.6; margin-top: 4px; }
+.set-btn-row { display: flex; gap: 8px; margin-top: 12px; }
+.set-btn { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; background: var(--bg-subtle); border: 1px solid var(--border); border-radius: 10px; padding: 11px; font-size: 13.5px; font-weight: 600; color: var(--text-main); cursor: pointer; }
+.set-btn:hover { background: var(--border-mid); }
+.set-msg { margin-top: 12px; font-size: 12.5px; color: #D97757; text-align: center; }
+
 /* ══════════ 全屏背单词 ══════════ */
 .sm-overlay {
   position: fixed; inset: 0; z-index: 100;

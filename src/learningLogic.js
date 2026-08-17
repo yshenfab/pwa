@@ -36,19 +36,34 @@ export function applyGrade(prev, grade, todayK) {
   };
 }
 
-// 今日学习队列：到期复习 + 新词（新词受每日上限约束），可按主题过滤。
-export function getStudyQueue({ vocab = VOCAB, progress = {}, dailyNew = DAILY_NEW_DEFAULT, theme = null, todayK }) {
+// 今日学习队列：到期复习 + 新词（新词受每日上限约束，复习可设上限），可按主题过滤。
+export function getStudyQueue({ vocab = VOCAB, progress = {}, dailyNew = DAILY_NEW_DEFAULT, reviewCap = 0, theme = null, todayK }) {
   const inTheme = (w) => !theme || w.theme === theme;
-  const reviews = vocab
+  let reviews = vocab
     .filter((w) => inTheme(w) && progress[w.id] && progress[w.id].due <= todayK)
     .sort((a, b) => (progress[a.id].due < progress[b.id].due ? -1 : 1))
     .map((w) => ({ ...w, isReview: true }));
+  if (reviewCap > 0) reviews = reviews.slice(0, reviewCap);
   const news = vocab
     .filter((w) => inTheme(w) && !progress[w.id])
     .sort((a, b) => a.id - b.id)
     .slice(0, dailyNew)
     .map((w) => ({ ...w, isNew: true }));
   return [...reviews, ...news];
+}
+
+// 连续打卡天数：studiedDays 为有学习记录的日期集合（Set of 'YYYY-MM-DD'）。
+// 从今天（若今天没学则从昨天）往前数连续天数。
+export function computeStreak(studiedDays, todayK) {
+  if (!studiedDays || studiedDays.size === 0) return 0;
+  let cursor = todayK;
+  if (!studiedDays.has(cursor)) cursor = addDays(cursor, -1);
+  let streak = 0;
+  while (studiedDays.has(cursor)) {
+    streak++;
+    cursor = addDays(cursor, -1);
+  }
+  return streak;
 }
 
 export function getLearnedCount(progress = {}) {
