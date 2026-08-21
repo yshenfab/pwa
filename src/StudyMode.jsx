@@ -47,8 +47,8 @@ export default function StudyMode({ onClose, onAfterStudy, settings = { dailyNew
   useEffect(() => {
     let alive = true;
     Promise.all([
-      storageGet("vocab_progress"),
-      storageGet("vocab_today_backup"),
+      storageGet("vocab_progress_v2"),
+      storageGet("vocab_today_backup_v2"),
       storageGet(`vocab_day:${todayK}`),
       storageGet("study_days"),
     ]).then(([p, b, d, sd]) => {
@@ -64,11 +64,11 @@ export default function StudyMode({ onClose, onAfterStudy, settings = { dailyNew
 
   const saveProgress = async (next) => {
     setProgress(next);
-    await storageSet("vocab_progress", next);
+    await storageSet("vocab_progress_v2", next);
   };
   const saveBackup = async (next) => {
     setBackup(next);
-    await storageSet("vocab_today_backup", next);
+    await storageSet("vocab_today_backup_v2", next);
   };
   const saveDayRec = async (next) => {
     setDayRec(next);

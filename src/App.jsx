@@ -131,7 +131,7 @@ function VocabCard({ dateKey, isToday, settings, onAfterStudy }) {
   const [dayRec, setDayRec] = useState(null);
   const [streak, setStreak] = useState(0);
   const load = useCallback(() => {
-    storageGet("vocab_progress").then((res) => setProgress(res ? res.value : {}));
+    storageGet("vocab_progress_v2").then((res) => setProgress(res ? res.value : {}));
     storageGet(`vocab_day:${dateKey}`).then((res) => setDayRec(res ? res.value : { studied: [], test: null }));
     storageGet("study_days").then((res) => setStreak(computeStreak(new Set(res?.value || []), todayKey())));
   }, [dateKey]);
