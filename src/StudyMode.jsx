@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { X, Volume2, RotateCcw, LayoutGrid, GraduationCap, BookOpen, ArrowLeft } from "lucide-react";
+import { X, Volume2, RotateCcw, LayoutGrid, GraduationCap, BookOpen, ArrowLeft, ChevronRight, ChevronDown, Check } from "lucide-react";
 import { storageGet, storageSet } from "./storage.js";
 import { todayKey } from "./dateUtils.js";
-import { VOCAB, THEME_ORDER } from "./vocabBank.js";
+import { VOCAB, THEME_ORDER, THEME_CATEGORIES } from "./vocabBank.js";
 import {
   applyGrade, getStudyQueue, getThemeStats,
   getMasteredCount, getLearnedCount, buildTest,
@@ -24,12 +24,23 @@ const GRADES = [
   { g: 3, label: "简单", sub: "长间隔", cls: "g-easy" },
 ];
 
-export default function StudyMode({ onClose, onAfterStudy, settings = { dailyNew: 10, reviewCap: 40 } }) {
+export default function StudyMode({ onClose, onAfterStudy, onSettingsChange, settings = { dailyNew: 10, reviewCap: 40, disabledThemes: [] } }) {
   const todayK = todayKey();
+  const disabledThemes = settings.disabledThemes || [];
+  const allowedThemes = THEME_ORDER.filter((t) => !disabledThemes.includes(t));
   const [progress, setProgress] = useState(null);
   const [backup, setBackup] = useState({ date: todayK, words: {} });
   const [studyDays, setStudyDays] = useState([]);
   const [tab, setTab] = useState("learn");
+  const [openCats, setOpenCats] = useState({}); // 主题分类的展开状态
+
+  const toggleThemeDaily = (theme) => {
+    if (!onSettingsChange) return;
+    const next = disabledThemes.includes(theme)
+      ? disabledThemes.filter((t) => t !== theme)
+      : [...disabledThemes, theme];
+    onSettingsChange({ ...settings, disabledThemes: next });
+  };
 
   // 学习会话
   const [queue, setQueue] = useState([]);
@@ -80,14 +91,14 @@ export default function StudyMode({ onClose, onAfterStudy, settings = { dailyNew
     [progress, todayK, settings.dailyNew],
   );
   const todayQueue = useMemo(
-    () => (progress ? getStudyQueue({ vocab: VOCAB, progress, dailyNew: settings.dailyNew, reviewCap: settings.reviewCap, todayK }) : []),
-    [progress, todayK, settings.dailyNew, settings.reviewCap],
+    () => (progress ? getStudyQueue({ vocab: VOCAB, progress, dailyNew: settings.dailyNew, reviewCap: settings.reviewCap, allowedThemes, todayK }) : []),
+    [progress, todayK, settings.dailyNew, settings.reviewCap, settings.disabledThemes], // eslint-disable-line react-hooks/exhaustive-deps
   );
   const hasBackup = backup && backup.date === todayK && Object.keys(backup.words).length > 0;
 
   // ── 学习 ──
   const startStudy = (theme = null) => {
-    const q = getStudyQueue({ vocab: VOCAB, progress, dailyNew: settings.dailyNew, reviewCap: theme ? 0 : settings.reviewCap, theme, todayK });
+    const q = getStudyQueue({ vocab: VOCAB, progress, dailyNew: settings.dailyNew, reviewCap: theme ? 0 : settings.reviewCap, theme, allowedThemes: theme ? null : allowedThemes, todayK });
     if (!q.length) {
       window.alert(theme ? "这个主题今天没有要学的了 🎉" : "今天没有需要学习的单词啦 🎉");
       return;
@@ -198,6 +209,8 @@ export default function StudyMode({ onClose, onAfterStudy, settings = { dailyNew
   const masteredTotal = getMasteredCount(progress);
   const reviewsToday = todayQueue.filter((w) => w.isReview).length;
   const newsToday = todayQueue.filter((w) => w.isNew).length;
+  const statMap = {};
+  stats.forEach((s) => { statMap[s.theme] = s; });
 
   return (
     <div className="sm-overlay">
@@ -221,7 +234,7 @@ export default function StudyMode({ onClose, onAfterStudy, settings = { dailyNew
             <div className="sm-stat-row">
               <div className="sm-stat"><b className="c-review">{reviewsToday}</b><span>待复习</span></div>
               <div className="sm-stat"><b className="c-new">{newsToday}</b><span>新词</span></div>
-              <div className="sm-stat"><b className="c-done">{masteredTotal}</b><span>已掌握</span></div>
+              <div className="sm-stat"><b className="c-done">{dayRec.studied.length}</b><span>今日已学</span></div>
             </div>
             <button type="button" className="sm-btn" disabled={reviewsToday + newsToday === 0} onClick={() => startStudy()}>
               {reviewsToday + newsToday === 0 ? "今日已完成 ✓" : `开始今日学习 (${reviewsToday + newsToday})`}
@@ -251,23 +264,50 @@ export default function StudyMode({ onClose, onAfterStudy, settings = { dailyNew
         {/* ── 主题 Tab ── */}
         {tab === "themes" && (
           <div className="sm-pane">
-            <button type="button" className="sm-btn" onClick={() => startStudy()}>📚 综合学习（所有主题混合）</button>
-            <div className="sm-section-title">按主题学习（点击开始）</div>
-            <div className="sm-theme-list">
-              {stats.map((s) => {
-                const pct = s.total ? Math.round((s.mastered / s.total) * 100) : 0;
-                return (
-                  <button type="button" key={s.theme} className="sm-theme-card" onClick={() => startStudy(s.theme)}>
-                    <div className="sm-theme-head">
-                      <span className="sm-theme-name">{s.theme}</span>
-                      <span className={`sm-theme-todo ${s.todo ? "" : "dim"}`}>{s.todo ? `今日 ${s.todo}` : "✓ 已学完"}</span>
-                    </div>
-                    <div className="sm-theme-bar"><i style={{ width: `${pct}%` }} /></div>
-                    <div className="sm-theme-meta">共 {s.total} · 待复习 {s.due} · 未学 {s.newLeft} · 已掌握 {s.mastered}</div>
+            <button type="button" className="sm-btn" onClick={() => startStudy()}>📚 综合学习（已选主题混合）</button>
+            <div className="sm-section-title">点分类展开 · 点卡片学该主题 · 点 ✓ 决定是否进入“今日”</div>
+            {THEME_CATEGORIES.map((cat) => {
+              const catThemes = cat.themes.filter((t) => statMap[t]);
+              if (!catThemes.length) return null;
+              const catTodo = catThemes.reduce((sum, t) => sum + (statMap[t].todo || 0), 0);
+              const isOpen = !!openCats[cat.name];
+              return (
+                <div key={cat.name} className="sm-cat">
+                  <button type="button" className="sm-cat-head" onClick={() => setOpenCats((o) => ({ ...o, [cat.name]: !o[cat.name] }))}>
+                    {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                    <span className="sm-cat-name">{cat.name}</span>
+                    <span className="sm-cat-meta">{catThemes.length} 主题{catTodo ? ` · 今日 ${catTodo}` : ""}</span>
                   </button>
-                );
-              })}
-            </div>
+                  {isOpen && (
+                    <div className="sm-theme-list">
+                      {catThemes.map((t) => {
+                        const s = statMap[t];
+                        const pct = s.total ? Math.round((s.mastered / s.total) * 100) : 0;
+                        const inDaily = !disabledThemes.includes(t);
+                        return (
+                          <div key={t} className="sm-theme-card" role="button" tabIndex={0}
+                            onClick={() => startStudy(t)}
+                            onKeyDown={(e) => { if (e.key === "Enter") startStudy(t); }}>
+                            <div className="sm-theme-head">
+                              <span className="sm-theme-name">{t}</span>
+                              <span className={`sm-theme-todo ${s.todo ? "" : "dim"}`}>{s.todo ? `今日 ${s.todo}` : "✓ 已学完"}</span>
+                            </div>
+                            <div className="sm-theme-bar"><i style={{ width: `${pct}%` }} /></div>
+                            <div className="sm-theme-foot">
+                              <span className="sm-theme-meta">共 {s.total} · 待复习 {s.due} · 未学 {s.newLeft} · 已掌握 {s.mastered}</span>
+                              <button type="button" className={`sm-daily-toggle ${inDaily ? "on" : ""}`}
+                                onClick={(e) => { e.stopPropagation(); toggleThemeDaily(t); }}>
+                                {inDaily ? <><Check size={12} /> 今日</> : "不进今日"}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 

@@ -37,15 +37,17 @@ export function applyGrade(prev, grade, todayK) {
 }
 
 // 今日学习队列：到期复习 + 新词（新词受每日上限约束，复习可设上限），可按主题过滤。
-export function getStudyQueue({ vocab = VOCAB, progress = {}, dailyNew = DAILY_NEW_DEFAULT, reviewCap = 0, theme = null, todayK }) {
-  const inTheme = (w) => !theme || w.theme === theme;
+// theme：单主题学习时只取该主题。allowedThemes：混合模式下新词只从这些主题里取（null=全部）；
+// 复习不受 allowedThemes 限制，避免已开始学的词被永久搁置。
+export function getStudyQueue({ vocab = VOCAB, progress = {}, dailyNew = DAILY_NEW_DEFAULT, reviewCap = 0, theme = null, allowedThemes = null, todayK }) {
+  const newAllowed = (w) => (theme ? w.theme === theme : (!allowedThemes || allowedThemes.includes(w.theme)));
   let reviews = vocab
-    .filter((w) => inTheme(w) && progress[w.id] && progress[w.id].due <= todayK)
+    .filter((w) => (!theme || w.theme === theme) && progress[w.id] && progress[w.id].due <= todayK)
     .sort((a, b) => (progress[a.id].due < progress[b.id].due ? -1 : 1))
     .map((w) => ({ ...w, isReview: true }));
   if (reviewCap > 0) reviews = reviews.slice(0, reviewCap);
   const news = vocab
-    .filter((w) => inTheme(w) && !progress[w.id])
+    .filter((w) => newAllowed(w) && !progress[w.id])
     .sort((a, b) => a.id - b.id)
     .slice(0, dailyNew)
     .map((w) => ({ ...w, isNew: true }));

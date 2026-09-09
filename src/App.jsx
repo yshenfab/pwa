@@ -6,7 +6,7 @@ import { Plus, Briefcase, User, BookOpen, ChevronLeft, ChevronRight, Sparkles, C
 import { storageGet, storageSet, storageList } from "./storage.js";
 import { addDays, formatDisplay, todayKey, pad } from "./dateUtils.js";
 import { getStudyQueue, getMasteredCount, getLearnedCount, computeStreak } from "./learningLogic.js";
-import { VOCAB } from "./vocabBank.js";
+import { VOCAB, THEME_ORDER } from "./vocabBank.js";
 import StudyMode from "./StudyMode.jsx";
 import SettingsModal from "./Settings.jsx";
 import "./app.css";
@@ -14,7 +14,7 @@ import "./app.css";
 // ── 常用任务预设 ──
 const DEFAULT_PRESETS = ["跑步 5km", "普拉提", "看书 30 分钟", "冥想 10 分钟", "健身", "散步", "写日记", "整理房间", "早睡 11 点前", "喝够 8 杯水", "拉伸放松", "瑜伽"];
 // ── 每天默认的个人安排（新的一天自动带上；删除后当天不再出现）──
-const DEFAULT_PERSONAL = ["看书 30 分钟", "喝够 8 杯水", "拉伸放松", "背单词", "早睡 11 点前"];
+const DEFAULT_PERSONAL = ["看书 30 分钟", "喝够 8 杯水", "拉伸放松", "背单词", "睡够 8 小时"];
 
 // ── 存储 ──
 function emptyDay() { return { work: [], personal: [], englishDone: { vocab: false }, carriedChecked: false }; }
@@ -125,7 +125,7 @@ function PresetsPanel({ presets, onAddTask, onUpdate }) {
 }
 
 // ── 每日单词卡片（今日：摘要 + 打开全屏背单词 + 测试成绩；往日：当日学习记录）──
-function VocabCard({ dateKey, isToday, settings, onAfterStudy }) {
+function VocabCard({ dateKey, isToday, settings, onSettingsChange, onAfterStudy }) {
   const [open, setOpen] = useState(false);
   const [progress, setProgress] = useState(null);
   const [dayRec, setDayRec] = useState(null);
@@ -138,7 +138,8 @@ function VocabCard({ dateKey, isToday, settings, onAfterStudy }) {
   useEffect(() => { load(); }, [load]);
 
   const todayK = todayKey();
-  const queue = progress ? getStudyQueue({ vocab: VOCAB, progress, dailyNew: settings.dailyNew, reviewCap: settings.reviewCap, todayK }) : [];
+  const allowedThemes = THEME_ORDER.filter((t) => !(settings.disabledThemes || []).includes(t));
+  const queue = progress ? getStudyQueue({ vocab: VOCAB, progress, dailyNew: settings.dailyNew, reviewCap: settings.reviewCap, allowedThemes, todayK }) : [];
   const reviews = queue.filter((w) => w.isReview).length;
   const news = queue.filter((w) => w.isNew).length;
   const mastered = progress ? getMasteredCount(progress) : 0;
@@ -161,7 +162,7 @@ function VocabCard({ dateKey, isToday, settings, onAfterStudy }) {
           <div className="vc-stats">
             <div className="vc-stat"><b className="c-review">{reviews}</b><span>待复习</span></div>
             <div className="vc-stat"><b className="c-new">{news}</b><span>新词</span></div>
-            <div className="vc-stat"><b className="c-done">{mastered}</b><span>已掌握</span></div>
+            <div className="vc-stat"><b className="c-done">{studied.length}</b><span>今日已学</span></div>
           </div>
           <button type="button" className="vc-start" onClick={() => setOpen(true)}>
             {todo ? `开始背单词 (${todo})` : "复习 / 测试 →"}
@@ -170,7 +171,7 @@ function VocabCard({ dateKey, isToday, settings, onAfterStudy }) {
             <span>📝 今日测试</span>
             {testRec ? <b>已完成 · {testRec.correct}/{testRec.total} · {testRec.pct}%</b> : <em>未测试</em>}
           </div>
-          <div className="vc-sub">累计已学 {learned} / {VOCAB.length} 词</div>
+          <div className="vc-sub">累计已学 {learned} · 已掌握 {mastered} · 共 {VOCAB.length} 词</div>
         </div>
       ) : (
         <div className="vc-body">
@@ -190,6 +191,7 @@ function VocabCard({ dateKey, isToday, settings, onAfterStudy }) {
       {open && (
         <StudyMode
           settings={settings}
+          onSettingsChange={onSettingsChange}
           onClose={() => { setOpen(false); load(); }}
           onAfterStudy={() => { onAfterStudy?.(); load(); }}
         />
@@ -284,7 +286,7 @@ export default function App() {
   const [storageError, setStorageError] = useState("");
   const [showCalendar, setShowCalendar] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [settings, setSettings] = useState({ dailyNew: 10, reviewCap: 40 });
+  const [settings, setSettings] = useState({ dailyNew: 10, reviewCap: 40, disabledThemes: [] });
   const idSeed = useRef(0);
 
   useEffect(() => {
@@ -397,7 +399,7 @@ export default function App() {
             <TaskColumn icon={<User size={14} />} label="个人安排" accent="#D97757" tasks={data.personal} onAdd={t => addTask("personal", t)} onToggle={id => toggleTask("personal", id)} onDelete={id => deleteTask("personal", id)} onReorder={l => reorderTasks("personal", l)} />
           </div>
           <PresetsPanel presets={presets} onAddTask={t => addTask("personal", t)} onUpdate={updatePresets} />
-          <VocabCard dateKey={dateKey} isToday={isToday} settings={settings} onAfterStudy={markVocabDone} />
+          <VocabCard dateKey={dateKey} isToday={isToday} settings={settings} onSettingsChange={updateSettings} onAfterStudy={markVocabDone} />
         </>
       )}
     </div>

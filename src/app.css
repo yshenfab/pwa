@@ -347,6 +347,18 @@ body { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inse
 .sm-theme-bar { height: 5px; background: rgba(255,255,255,0.12); border-radius: 5px; overflow: hidden; }
 .sm-theme-bar i { display: block; height: 100%; background: #5cc98f; }
 .sm-theme-meta { font-size: 11.5px; color: rgba(255,255,255,0.5); margin-top: 8px; }
+/* 主题分类折叠 + 今日开关 */
+.sm-cat { margin-bottom: 8px; }
+.sm-cat-head { width: 100%; display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 12px 14px; color: #FAF8F4; cursor: pointer; }
+.sm-cat-head:hover { background: rgba(255,255,255,0.1); }
+.sm-cat-name { font-size: 15px; font-weight: 700; }
+.sm-cat-meta { margin-left: auto; font-size: 12px; color: rgba(255,255,255,0.55); }
+.sm-cat .sm-theme-list { margin-top: 8px; padding-left: 4px; }
+.sm-theme-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; }
+.sm-theme-foot .sm-theme-meta { margin-top: 0; }
+.sm-daily-toggle { flex-shrink: 0; display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; font-weight: 600; padding: 4px 10px; border-radius: 20px; cursor: pointer; border: 1px solid rgba(255,255,255,0.2); background: transparent; color: rgba(255,255,255,0.5); }
+.sm-daily-toggle:hover { background: rgba(255,255,255,0.08); }
+.sm-daily-toggle.on { background: #5cc98f; border-color: #5cc98f; color: #fff; }
 
 /* 翻卡评分 */
 .sm-deck-top { display: flex; align-items: center; justify-content: space-between; }
