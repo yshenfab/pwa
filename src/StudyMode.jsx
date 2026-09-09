@@ -92,7 +92,7 @@ export default function StudyMode({ onClose, onAfterStudy, onSettingsChange, set
   );
   const todayQueue = useMemo(
     () => (progress ? getStudyQueue({ vocab: VOCAB, progress, dailyNew: settings.dailyNew, reviewCap: settings.reviewCap, allowedThemes, todayK }) : []),
-    [progress, todayK, settings.dailyNew, settings.reviewCap, settings.disabledThemes], // eslint-disable-line react-hooks/exhaustive-deps
+    [progress, todayK, settings.dailyNew, settings.reviewCap, settings.disabledThemes],
   );
   const hasBackup = backup && backup.date === todayK && Object.keys(backup.words).length > 0;
 
